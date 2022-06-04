@@ -3,7 +3,6 @@ const app = express()
 const cors = require('cors')
 const mongoose = require('mongoose')
 const bodyParser = require('body-parser');
-const { response } = require('express');
 require('dotenv').config('./.env')
 
 app.use(cors())
@@ -15,13 +14,13 @@ app.get('/', (req, res) => {
   res.sendFile(__dirname + '/views/index.html')
 });
 
-const mongo_uri = process.env.MONGO_URI;
+const mongo_uri = process.env['MONGO_URI'];
 mongoose.connect(mongo_uri,  { useNewUrlParser: true, useUnifiedTopology: true })
 
 const exerciseSchema = new mongoose.Schema({
   description: String,
   duration: Number,
-  date: Date
+  date: String
 })
 
 const userSchema = new mongoose.Schema({
@@ -60,74 +59,72 @@ app.post("/api/users/:id/exercises", (req, res) => {
   let duration = parseInt(req.body.duration)
   let date = req.body.date
 
-  let exercise = new Exercise({
+  let exc = {
     description: desc,
     duration: duration,
     date: date
-  })
-
-  
-  if(excerise.date === ''){
-    exercise.date = new Date().toISOString().substring(0,10)
   }
   
-  User.findByIdAndUpdate(id, {$push: {log: exercise}},function(err, exerciseInfo) {
+  if(!exc.date || exc.date === undefined){
+    exc.date = new Date().toDateString()
+  } else if(exc.date){
+    exc.date = new Date(exc.date).toDateString()
+  }
+  User.findByIdAndUpdate(id, {$push: {log: exc}},function(err, exerciseInfo) {
     console.log(exerciseInfo)
    if(!err){
     let userObject = {}
-      // userObject['description'] = exercise.desc,
-      // userObject['duration'] = exercise.duration,
-      // userObject['date'] = exercise.date
+     
       userObject['_id'] = exerciseInfo.id
       userObject['username'] = exerciseInfo.username
-      userObject['description'] = exercise.description
-      userObject['duration'] = exercise.duration
-      userObject['date'] = new Date(exercise.date).toDateString()
-     
-    
+      userObject['description'] = exc.description
+      userObject['duration'] = exc.duration
+      userObject['date'] = exc.date.toString()
+      
     console.log('user 123 ', userObject)
    
-
-    res.json(userObject)    
+    res.send(userObject)    
    }
   })
 })
 
-app.get("/api/users/:id/logs", (req, res) => {
-  let id = req.params.id
-  let fromDate = req.query.from
-  let toDate = req.query.to
-  let respLimit = req.query.limit;
-  let responseFilter = null;
-  User.findById(id, {username: 0, _id: 0}, (err, logs) => {
-    
-    let count = logs.log.length
-    let respObj = {
-      count: count,
-      log: logs.log
-    }
+app.get("/api/users/:_id/logs", (req, res) => {
+  User.findById(req.params._id, (error, result) => {
+    if (!error) {
+      let resObj = result;
 
-    if(fromDate){
-      const fromTime = new Date(fromDate).getTime();
-      if(toDate){
-        const toTime = new Date(toDate).getTime();
-        responseFilter = logs.log.filter(ex => new Date(ex.date).getTime() >= fromTime && new Date(ex.date).getTime() <= toTime);
-      }else{
-        responseFilter = logs.log.filter(ex => new Date(ex.date).getTime() >= fromTime);
+      if (req.query.from || req.query.to) {
+        let fromDate = new Date(0);
+        let toDate = new Date();
+
+        if (req.query.from) {
+          fromDate = new Date(req.query.from);
+        }
+
+        if (req.query.to) {
+          toDate = new Date(req.query.to);
+        }
+
+        fromDate = fromDate.getTime();
+        toDate = toDate.getTime();
+
+        resObj.log = resObj.log.filter(session => {
+          let sessionDate = new Date(session.date).getTime();
+
+          return sessionDate >= fromDate && sessionDate <= toDate;
+        });
       }
+
+      if (req.query.limit) {
+        resObj.log = resObj.log.slice(0, req.query.limit);
+      }
+
+      resObj = resObj.toJSON();
+      resObj["count"] = result.log.length;
+      res.json(resObj);
     }
-    if(respLimit){
-      responseFilter = logs.log.slice(0, respLimit);
-    }
-    // logs['count'] =  count
-    if(err) console.log(err)
-    
-   
-   
-      res.json(respObj)
-   
-  })
-})
+  });
+});
 
 const listener = app.listen(process.env.PORT || 3000, () => {
   console.log('Your app is listening on port ' + listener.address().port)
